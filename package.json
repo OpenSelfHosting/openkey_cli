@@ -1,0 +1,39 @@
+{
+  "name": "openkey-cli",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenKey developer CLI — secrets, TOTP, password generation, and vault sync",
+  "bin": {
+    "openkey": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.2.1",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.7.1",
+    "commander": "^13.1.0",
+    "hash-wasm": "^4.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}
