@@ -249,7 +249,7 @@ export async function cmdStatus(): Promise<void> {
     printLine(`server:   ${data.serverUrl}`);
     printLine(`email:    ${data.email ?? "(none)"}`);
     printLine(`logged:   ${data.loggedIn ? "yes" : "no"}`);
-    printLine(`bridge:   ${bridge ? "desktop app unlocked" : "unavailable"}`);
+    printLine(`bridge:   ${bridge ? "app unlocked (bridge)" : "unavailable"}`);
     printLine(
       `unlocked: ${data.unlocked ? `yes (${data.mode})` : "no"}`,
     );
@@ -265,7 +265,7 @@ export async function cmdStatus(): Promise<void> {
     if (!data.unlocked) {
       printLine("");
       printLine(
-        "Tip: unlock the OpenKey desktop app to use secrets without login,",
+        "Tip: unlock OpenKey (desktop or Android + Termux env),",
       );
       printLine("or configure a server and run: eval $(openkey unlock)");
     }
