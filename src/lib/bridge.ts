@@ -3,7 +3,7 @@
 import { createConnection, type Socket } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, tmpdir, platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { DecryptedSecret, SecretKindName } from "./types.js";
 import { normalizeSecretKind, ReservedCollections } from "./types.js";
 import { normalizeTotp } from "./totp.js";
@@ -55,6 +55,51 @@ function resolveUnixSocket(): string | null {
     if (existsSync(path)) return path;
   }
   return null;
+}
+
+function resolveBridgeToken(socketPath?: string): string | undefined {
+  const override = process.env.OPENKEY_NATIVE_TOKEN?.trim();
+  if (override) return override;
+
+  if (platform() === "win32") {
+    const local = process.env.LOCALAPPDATA?.trim();
+    if (local) {
+      const tokenFile = join(local, "OpenKey", "openkey-native.token");
+      if (existsSync(tokenFile)) {
+        return readFileSync(tokenFile, "utf8").trim() || undefined;
+      }
+    }
+  }
+
+  if (socketPath) {
+    const tokenFile = join(dirname(socketPath), "openkey-native.token");
+    if (existsSync(tokenFile)) {
+      return readFileSync(tokenFile, "utf8").trim() || undefined;
+    }
+  }
+
+  return undefined;
+}
+
+function withBridgeAuth(
+  msg: Record<string, unknown>,
+  token?: string,
+): Record<string, unknown> {
+  if (!token) return msg;
+  return { ...msg, auth: token };
+}
+
+function loopbackPort(): number | null {
+  const override = process.env.OPENKEY_NATIVE_PORT?.trim();
+  if (override) {
+    const n = Number(override);
+    return Number.isFinite(n) ? n : null;
+  }
+  return windowsPort();
+}
+
+function usesLoopbackTcp(): boolean {
+  return platform() === "win32" || process.env.OPENKEY_NATIVE_PORT?.trim() !== "";
 }
 
 function windowsPort(): number | null {
@@ -181,17 +226,18 @@ export async function bridgeRequest(
   msg: Record<string, unknown>,
   timeoutMs = 2500,
 ): Promise<BridgeResponse> {
-  if (platform() === "win32") {
-    const port = windowsPort();
+  if (usesLoopbackTcp()) {
+    const port = loopbackPort();
     if (!port) {
       return {
         ok: false,
-        error: "OpenKey desktop app is not running or the vault is locked",
+        error: "OpenKey app is not running or the vault is locked",
       };
     }
+    const token = resolveBridgeToken();
     return requestOverSocket(
       () => createConnection({ host: "127.0.0.1", port }),
-      msg,
+      withBridgeAuth(msg, token),
       timeoutMs,
     );
   }
@@ -203,7 +249,12 @@ export async function bridgeRequest(
       error: "OpenKey desktop app is not running or the vault is locked",
     };
   }
-  return requestOverSocket(() => createConnection(path), msg, timeoutMs);
+  const token = resolveBridgeToken(path);
+  return requestOverSocket(
+    () => createConnection(path),
+    withBridgeAuth(msg, token),
+    timeoutMs,
+  );
 }
 
 export async function tryBridgePing(): Promise<boolean> {

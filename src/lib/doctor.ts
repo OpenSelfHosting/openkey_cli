@@ -65,8 +65,8 @@ export async function runDoctor(): Promise<{
     id: "bridge",
     ok: bridge,
     detail: bridge
-      ? "desktop app unlocked"
-      : "unavailable (unlock OpenKey desktop, or use server session)",
+      ? "OpenKey app unlocked (bridge)"
+      : "unavailable — unlock OpenKey app, set OPENKEY_NATIVE_PORT/TOKEN (Android Termux), or use server session",
   });
 
   const session = readSessionFromEnv();
