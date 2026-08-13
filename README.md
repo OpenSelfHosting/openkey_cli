@@ -14,6 +14,15 @@ Full documentation: [CLI guide](../openkey_docs/guide/cli.md) (also on the docs 
 
 ## Install
 
+**From npm** (recommended):
+
+```bash
+npm install -g openkey-cli
+openkey --version
+```
+
+**From source** (development):
+
 ```bash
 cd openkey_cli
 npm install
@@ -24,6 +33,7 @@ npm link          # optional: puts `openkey` on your PATH
 Without linking:
 
 ```bash
+npx openkey-cli --help
 npx tsx src/cli.ts --help
 node dist/cli.js --help
 ```
