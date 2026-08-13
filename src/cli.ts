@@ -32,10 +32,16 @@ async function main(): Promise<void> {
       err &&
       typeof err === "object" &&
       "code" in err &&
-      (err as { code?: string }).code?.startsWith("commander.")
+      typeof (err as { code?: string }).code === "string"
     ) {
       const code = (err as { code: string }).code;
-      if (code === "commander.helpDisplayed" || code === "commander.versionDisplayed") {
+      // Commander v13 exitOverride codes (help/version are not errors).
+      if (
+        code === "commander.helpDisplayed" ||
+        code === "commander.help" ||
+        code === "commander.versionDisplayed" ||
+        code === "commander.version"
+      ) {
         return;
       }
     }
