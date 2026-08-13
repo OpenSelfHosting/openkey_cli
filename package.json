@@ -1,9 +1,25 @@
 {
   "name": "openkey-cli",
   "version": "0.3.0",
-  "private": true,
   "type": "module",
   "description": "OpenKey developer CLI — secrets, TOTP, password generation, and vault sync",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenSelfHosting/openkey_cli.git"
+  },
+  "homepage": "https://github.com/OpenSelfHosting/openkey_cli#readme",
+  "bugs": {
+    "url": "https://github.com/OpenSelfHosting/openkey_cli/issues"
+  },
+  "keywords": [
+    "openkey",
+    "password-manager",
+    "secrets",
+    "cli",
+    "totp",
+    "developer-tools"
+  ],
   "bin": {
     "openkey": "./dist/cli.js"
   },
