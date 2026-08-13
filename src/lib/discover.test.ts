@@ -31,6 +31,8 @@ describe("discover", () => {
       ssh: false,
       envVars: false,
       aws: false,
+      gh: false,
+      docker: false,
       envFiles: true,
     });
 
@@ -95,6 +97,8 @@ describe("discover", () => {
       ssh: false,
       envVars: false,
       aws: false,
+      gh: false,
+      docker: false,
       envFiles: true,
     });
     expect(found).toEqual([]);
@@ -116,6 +120,8 @@ describe("discover", () => {
       ssh: false,
       envVars: false,
       aws: false,
+      gh: false,
+      docker: false,
       envFiles: true,
     });
 
