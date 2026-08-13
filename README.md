@@ -113,4 +113,3 @@ npm run build
 - Sessions expire (default 15 minutes; `config set-lock`)
 - Bridge is local-only while the vault is unlocked
 - Server stores ciphertext only; keys are derived on the client
-# openkey_cli
