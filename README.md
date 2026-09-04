@@ -1,16 +1,16 @@
 # OpenKey CLI
 
-Developer command-line interface for the [OpenKey](../README.md) self-hosted, end-to-end encrypted password manager.
+Developer command-line interface for the [OpenKey](https://github.com/OpenSelfHosting/OpenKey) self-hosted, end-to-end encrypted password manager.
 
-Generate passwords offline, manage developer secrets through the unlocked **desktop** app (native bridge), discover SSH / `.env` / API / AWS material into a device-grouped Secrets section, and optionally authenticate to a self-hosted sync server for ciphertext pull and a short-lived `OPENKEY_SESSION`.
+Generate passwords offline, manage developer secrets through the unlocked **desktop or Android** app (native bridge), discover SSH / `.env` / API / AWS material into a device-grouped Secrets section, and optionally authenticate to a self-hosted sync server for ciphertext pull and a short-lived `OPENKEY_SESSION`.
 
-Full documentation: [CLI guide](../openkey_docs/guide/cli.md) (also on the docs site under **Guide → CLI**).
+Full documentation: [CLI guide](https://openselfhosting.com/guide/cli) (also on the docs site under **Guide → CLI**).
 
 ## Requirements
 
 - Node.js **20+**
-- For vault commands without a server: OpenKey **desktop** app unlocked on this machine
-- For server mode: a running [openkey_server](../openkey_server) instance
+- For vault commands without a server: OpenKey **desktop** (or Android) app unlocked on this machine
+- For server mode: a running [OpenKey_server](https://github.com/OpenSelfHosting/OpenKey_server) instance
 
 ## Install
 
@@ -63,6 +63,20 @@ openkey run -e DATABASE_URL -e GH=GitHub -- npm start
 
 Shell completions: `eval "$(openkey completion zsh)"` (also `bash` / `fish`).
 
+## Android (Termux)
+
+Unlock OpenKey → **Settings → Data → Termux / CLI**, then:
+
+```bash
+pkg install nodejs
+npm install -g openkey-cli
+export OPENKEY_NATIVE_PORT=...    # from the sheet
+export OPENKEY_NATIVE_TOKEN=...   # from the sheet
+openkey status
+```
+
+Port and token last only for that unlock. Copy them again after you lock the vault.
+
 ## Optional: self-hosted server
 
 ```bash
@@ -82,14 +96,14 @@ Master password: interactive prompt, or `OPENKEY_PASSWORD` for scripts/CI (never
 | `gen` | No | Offline password generation (`-l`, `--no-*`, `-a`, `-c`) |
 | `discover` | Save: yes\* | Scan SSH / `.env` / env / AWS → device group |
 | `secret add\|list\|get\|copy\|rm\|update\|export\|devices\|set` | Yes\* | Typed developer secrets (`--stdin` / `--secret -`) |
-| `get` / `copy` / `search` / `totp` / `logins` | Yes\* | Secrets + logins (field select, TOTP, `--watch`) |
+| `get` / `copy` / `search` / `totp` / `logins` / `cards` / `crypto` | Yes\* | Secrets + logins + cards + wallets |
 | `env` / `run` | Yes\* | Export secrets into the shell or a child process |
 | `doctor` | No | Diagnose bridge / session / server / clipboard |
 | `completion` | No | Bash / zsh / fish completion scripts |
 | `status` / `config` / `forget` | No | Diagnostics and local state |
 | `login` / `logout` / `unlock` / `lock` / `sync` | Server path | Optional ciphertext sync + session (`sync --push`) |
 
-\*Desktop app unlocked, **or** `eval $(openkey unlock)` after `login`.
+\*Desktop or Android app unlocked, **or** `eval $(openkey unlock)` after `login`.
 
 Global: `--json` for machine-readable output.
 
@@ -101,7 +115,7 @@ Clipboard copies auto-clear after **45s** by default (`--keep` to disable; `--cl
 
 ## Backends
 
-1. **Native bridge** — unlocked desktop app (default).
+1. **Native bridge** — unlocked desktop (or Android Termux) app (default).
 2. **CLI session** — `OPENKEY_SESSION` after `unlock`.
 
 `openkey gen` needs neither.

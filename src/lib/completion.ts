@@ -19,6 +19,8 @@ const COMMANDS = [
   "search",
   "totp",
   "logins",
+  "cards",
+  "crypto",
   "doctor",
   "env",
   "run",
@@ -103,9 +105,11 @@ _openkey() {
     'discover:Scan machine for secrets'
     'get:Get password/secret for best match'
     'copy:Copy password/secret for best match'
-    'search:Search secrets and logins'
+    'search:Search secrets, logins, cards, and crypto'
     'totp:Print or copy a TOTP code'
     'logins:List login entries'
+    'cards:List payment cards'
+    'crypto:List crypto wallets'
     'doctor:Diagnose CLI / bridge / server'
     'env:Export secrets as shell env assignments'
     'run:Run a command with secrets in the environment'
