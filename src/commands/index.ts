@@ -32,6 +32,8 @@ import {
   itemSecretValue,
   listDecryptedItems,
   listLogins,
+  listCards,
+  listCrypto,
   listSecrets,
   matchQuery,
   parseEnvBinding,
@@ -1026,6 +1028,7 @@ export function registerCommands(program: Command): void {
             urls: l.urls,
             password: maskSecret(l.password),
             totp: !!l.totp?.secret,
+            tags: l.tags ?? [],
           })),
         );
         return;
@@ -1047,9 +1050,80 @@ export function registerCommands(program: Command): void {
     });
 
   program
+    .command("cards")
+    .description("List payment cards (numbers masked)")
+    .action(async () => {
+      const cards = await listCards();
+      if (isJsonMode()) {
+        printJson(
+          cards.map((c) => ({
+            uuid: c.uuid,
+            name: c.name,
+            holder: c.holder,
+            brand: c.brand,
+            bank: c.bank || undefined,
+            number: maskSecret(c.number),
+            expiry: c.expiry,
+          })),
+        );
+        return;
+      }
+      if (!cards.length) {
+        printLine("No cards.");
+        return;
+      }
+      printTable(
+        ["UUID", "Name", "Brand", "Bank", "Number", "Expiry"],
+        cards.map((c) => [
+          c.uuid.slice(0, 8),
+          c.name || "—",
+          c.brand || "—",
+          c.bank || "—",
+          maskSecret(c.number),
+          c.expiry || "—",
+        ]),
+      );
+    });
+
+  program
+    .command("crypto")
+    .description("List crypto wallets (keys masked)")
+    .action(async () => {
+      const wallets = await listCrypto();
+      if (isJsonMode()) {
+        printJson(
+          wallets.map((w) => ({
+            uuid: w.uuid,
+            name: w.name,
+            network: w.network,
+            folder: w.folder || undefined,
+            address: w.address,
+            privateKey: maskSecret(w.privateKey),
+            seedPhrase: w.seedPhrase ? maskSecret(w.seedPhrase) : undefined,
+          })),
+        );
+        return;
+      }
+      if (!wallets.length) {
+        printLine("No crypto wallets.");
+        return;
+      }
+      printTable(
+        ["UUID", "Name", "Network", "Folder", "Address"],
+        wallets.map((w) => [
+          w.uuid.slice(0, 8),
+          w.name || "—",
+          w.network || "—",
+          w.folder || "—",
+          w.address ? maskSecret(w.address) : "—",
+        ]),
+      );
+    });
+
+  program
     .command("search")
     .argument("<query>", "Search query")
-    .description("Search secrets and logins (masked)")
+    .description("Search secrets, logins, cards, and crypto (masked)")
     .action(async (query: string) => {
       const items = matchQuery(await listDecryptedItems(), query);
       if (isJsonMode()) {

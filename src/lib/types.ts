@@ -74,6 +74,7 @@ export type DecryptedLogin = {
   password: string;
   urls: string[];
   notes: string;
+  tags?: string[];
   totp?: {
     secret: string;
     period?: number;
@@ -82,7 +83,42 @@ export type DecryptedLogin = {
   } | null;
 };
 
-export type VaultItem = DecryptedSecret | DecryptedLogin;
+export type DecryptedCard = {
+  kind: "card";
+  type: "card";
+  uuid: string;
+  collectionUuid: string | null;
+  revision: number;
+  name: string;
+  holder: string;
+  number: string;
+  expiry: string;
+  cvc: string;
+  brand: string;
+  notes: string;
+  bank: string;
+};
+
+export type DecryptedCrypto = {
+  kind: "crypto";
+  type: "crypto";
+  uuid: string;
+  collectionUuid: string | null;
+  revision: number;
+  name: string;
+  network: string;
+  address: string;
+  privateKey: string;
+  seedPhrase: string;
+  notes: string;
+  folder: string;
+};
+
+export type VaultItem =
+  | DecryptedSecret
+  | DecryptedLogin
+  | DecryptedCard
+  | DecryptedCrypto;
 
 export const ReservedCollections = {
   wallets: "__wallets__",

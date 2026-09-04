@@ -4,7 +4,13 @@ import { createConnection, type Socket } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, tmpdir, platform } from "node:os";
 import { dirname, join } from "node:path";
-import type { DecryptedSecret, SecretKindName } from "./types.js";
+import type {
+  DecryptedCard,
+  DecryptedCrypto,
+  DecryptedLogin,
+  DecryptedSecret,
+  SecretKindName,
+} from "./types.js";
 import { normalizeSecretKind, ReservedCollections } from "./types.js";
 import { normalizeTotp } from "./totp.js";
 
@@ -16,6 +22,8 @@ export type BridgeResponse = {
   secret?: Record<string, unknown>;
   entries?: Array<Record<string, unknown>>;
   entry?: Record<string, unknown> | null;
+  cards?: Array<Record<string, unknown>>;
+  wallets?: Array<Record<string, unknown>>;
 };
 
 function socketCandidates(): string[] {
@@ -98,8 +106,11 @@ function loopbackPort(): number | null {
   return windowsPort();
 }
 
-function usesLoopbackTcp(): boolean {
-  return platform() === "win32" || process.env.OPENKEY_NATIVE_PORT?.trim() !== "";
+/** True when the CLI should speak loopback TCP (Windows, or Termux via env). */
+export function usesLoopbackTcp(): boolean {
+  return (
+    platform() === "win32" || Boolean(process.env.OPENKEY_NATIVE_PORT?.trim())
+  );
 }
 
 function windowsPort(): number | null {
@@ -382,25 +393,7 @@ export async function bridgeDeleteSecret(uuid: string): Promise<void> {
   }
 }
 
-export async function bridgeListLogins(): Promise<
-  Array<{
-    kind: "login";
-    uuid: string;
-    collectionUuid: string | null;
-    revision: number;
-    title: string;
-    username: string;
-    password: string;
-    urls: string[];
-    notes: string;
-    totp?: {
-      secret: string;
-      period?: number;
-      digits?: number;
-      algorithm?: string;
-    } | null;
-  }>
-> {
+export async function bridgeListLogins(): Promise<DecryptedLogin[]> {
   const res = await bridgeRequest({ type: "listEntries" }, 5000);
   if (!res.ok) {
     throw new Error(res.error || "Failed to list logins from OpenKey app");
@@ -415,6 +408,56 @@ export async function bridgeListLogins(): Promise<
     password: String(e.password ?? ""),
     urls: Array.isArray(e.urls) ? (e.urls as string[]) : [],
     notes: String(e.notes ?? ""),
+    tags: Array.isArray(e.tags) ? (e.tags as string[]) : [],
     totp: normalizeTotp(e.totp),
+  }));
+}
+
+export async function bridgeListCards(): Promise<DecryptedCard[]> {
+  const res = await bridgeRequest({ type: "listCards" }, 5000);
+  if (!res.ok) {
+    throw new Error(res.error || "Failed to list cards from OpenKey app");
+  }
+  return (res.cards ?? []).map((c) => ({
+    kind: "card" as const,
+    type: "card" as const,
+    uuid: String(c.uuid ?? ""),
+    collectionUuid:
+      (c.collectionUuid as string | null | undefined) ??
+      ReservedCollections.wallets,
+    revision: Number(c.revision ?? 1),
+    name: String(c.name ?? ""),
+    holder: String(c.holder ?? ""),
+    number: String(c.number ?? ""),
+    expiry: String(c.expiry ?? ""),
+    cvc: String(c.cvc ?? ""),
+    brand: String(c.brand ?? ""),
+    notes: String(c.notes ?? ""),
+    bank: String(c.bank ?? ""),
+  }));
+}
+
+export async function bridgeListCrypto(): Promise<DecryptedCrypto[]> {
+  const res = await bridgeRequest({ type: "listCrypto" }, 5000);
+  if (!res.ok) {
+    throw new Error(
+      res.error || "Failed to list crypto wallets from OpenKey app",
+    );
+  }
+  return (res.wallets ?? []).map((w) => ({
+    kind: "crypto" as const,
+    type: "crypto" as const,
+    uuid: String(w.uuid ?? ""),
+    collectionUuid:
+      (w.collectionUuid as string | null | undefined) ??
+      ReservedCollections.crypto,
+    revision: Number(w.revision ?? 1),
+    name: String(w.name ?? ""),
+    network: String(w.network ?? ""),
+    address: String(w.address ?? ""),
+    privateKey: String(w.privateKey ?? ""),
+    seedPhrase: String(w.seedPhrase ?? ""),
+    notes: String(w.notes ?? ""),
+    folder: String(w.folder ?? ""),
   }));
 }

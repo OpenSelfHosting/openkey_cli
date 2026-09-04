@@ -148,4 +148,40 @@ describe("parseItemField / itemFieldValue", () => {
     expect(itemFieldValue(entry, "url")).toBe("https://ex.com");
     expect(itemFieldValue(entry, "totp")).toMatch(/^\d{6}$/);
   });
+
+  it("labels cards and crypto", () => {
+    const card: import("./types.js").DecryptedCard = {
+      kind: "card",
+      type: "card",
+      uuid: "c1",
+      collectionUuid: "__wallets__",
+      revision: 1,
+      name: "Visa Gold",
+      holder: "A",
+      number: "4111",
+      expiry: "12/28",
+      cvc: "123",
+      brand: "visa",
+      notes: "",
+      bank: "Acme Bank",
+    };
+    const wallet: import("./types.js").DecryptedCrypto = {
+      kind: "crypto",
+      type: "crypto",
+      uuid: "w1",
+      collectionUuid: "__crypto_wallets__",
+      revision: 1,
+      name: "Hot",
+      network: "ethereum",
+      address: "0xabc",
+      privateKey: "pk",
+      seedPhrase: "",
+      notes: "",
+      folder: "Cold",
+    };
+    expect(itemLabel(card)).toBe("Visa Gold");
+    expect(itemLabel(wallet)).toBe("Hot");
+    expect(matchQuery([card, wallet], "acme")).toEqual([card]);
+    expect(matchQuery([card, wallet], "cold")).toEqual([wallet]);
+  });
 });

@@ -4,6 +4,8 @@ import {
   ReservedCollections,
   isReservedCollection,
   normalizeSecretKind,
+  type DecryptedCard,
+  type DecryptedCrypto,
   type DecryptedLogin,
   type DecryptedSecret,
   type SecretKindName,
@@ -22,6 +24,8 @@ import type { SessionPayload } from "./types.js";
 import {
   bridgeCreateSecret,
   bridgeDeleteSecret,
+  bridgeListCards,
+  bridgeListCrypto,
   bridgeListLogins,
   bridgeListSecrets,
   bridgeUpdateSecret,
@@ -80,8 +84,13 @@ function parseVaultItem(
   ) {
     return normalizeSecret(row, raw);
   }
+  if (type === "card" || row.collectionUuid === ReservedCollections.wallets) {
+    return normalizeCard(row, raw);
+  }
+  if (type === "crypto" || row.collectionUuid === ReservedCollections.crypto) {
+    return normalizeCrypto(row, raw);
+  }
   if (isReservedCollection(row.collectionUuid)) return null;
-  if (type === "card" || type === "crypto") return null;
   return {
     kind: "login",
     uuid: row.uuid,
@@ -92,7 +101,49 @@ function parseVaultItem(
     password: String(raw.password ?? ""),
     urls: Array.isArray(raw.urls) ? (raw.urls as string[]) : [],
     notes: String(raw.notes ?? ""),
+    tags: Array.isArray(raw.tags) ? (raw.tags as string[]) : [],
     totp: normalizeTotp(raw.totp),
+  };
+}
+
+function normalizeCard(
+  row: StoredEntry,
+  raw: Record<string, unknown>,
+): DecryptedCard {
+  return {
+    kind: "card",
+    type: "card",
+    uuid: row.uuid,
+    collectionUuid: row.collectionUuid,
+    revision: row.revision,
+    name: String(raw.name ?? ""),
+    holder: String(raw.holder ?? ""),
+    number: String(raw.number ?? ""),
+    expiry: String(raw.expiry ?? ""),
+    cvc: String(raw.cvc ?? ""),
+    brand: String(raw.brand ?? ""),
+    notes: String(raw.notes ?? ""),
+    bank: String(raw.bank ?? ""),
+  };
+}
+
+function normalizeCrypto(
+  row: StoredEntry,
+  raw: Record<string, unknown>,
+): DecryptedCrypto {
+  return {
+    kind: "crypto",
+    type: "crypto",
+    uuid: row.uuid,
+    collectionUuid: row.collectionUuid,
+    revision: row.revision,
+    name: String(raw.name ?? ""),
+    network: String(raw.network ?? ""),
+    address: String(raw.address ?? ""),
+    privateKey: String(raw.privateKey ?? ""),
+    seedPhrase: String(raw.seedPhrase ?? ""),
+    notes: String(raw.notes ?? ""),
+    folder: String(raw.folder ?? ""),
   };
 }
 
@@ -125,11 +176,13 @@ export async function listDecryptedItems(
 ): Promise<VaultItem[]> {
   const backend = session ? "session" : await resolveBackend();
   if (backend === "native") {
-    const [secrets, logins] = await Promise.all([
+    const [secrets, logins, cards, cryptoWallets] = await Promise.all([
       bridgeListSecrets(),
       bridgeListLogins(),
+      bridgeListCards(),
+      bridgeListCrypto(),
     ]);
-    return [...secrets, ...logins];
+    return [...secrets, ...logins, ...cards, ...cryptoWallets];
   }
   const s = session ?? requireSession();
   const cfg = await loadConfig();
@@ -148,6 +201,20 @@ export async function listLogins(): Promise<DecryptedLogin[]> {
   if (backend === "native") return bridgeListLogins();
   const items = await listDecryptedItems();
   return items.filter((i): i is DecryptedLogin => i.kind === "login");
+}
+
+export async function listCards(): Promise<DecryptedCard[]> {
+  const backend = await resolveBackend();
+  if (backend === "native") return bridgeListCards();
+  const items = await listDecryptedItems();
+  return items.filter((i): i is DecryptedCard => i.kind === "card");
+}
+
+export async function listCrypto(): Promise<DecryptedCrypto[]> {
+  const backend = await resolveBackend();
+  if (backend === "native") return bridgeListCrypto();
+  const items = await listDecryptedItems();
+  return items.filter((i): i is DecryptedCrypto => i.kind === "crypto");
 }
 
 export type CreateSecretInput = {
@@ -413,6 +480,24 @@ export function matchQuery<T extends VaultItem>(items: T[], query: string): T[] 
         item.device.toLowerCase().includes(q)
       );
     }
+    if (item.kind === "card") {
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.holder.toLowerCase().includes(q) ||
+        item.bank.toLowerCase().includes(q) ||
+        item.brand.toLowerCase().includes(q) ||
+        item.uuid.toLowerCase().startsWith(q)
+      );
+    }
+    if (item.kind === "crypto") {
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.network.toLowerCase().includes(q) ||
+        item.address.toLowerCase().includes(q) ||
+        item.folder.toLowerCase().includes(q) ||
+        item.uuid.toLowerCase().startsWith(q)
+      );
+    }
     return (
       item.title.toLowerCase().includes(q) ||
       item.username.toLowerCase().includes(q) ||
@@ -467,11 +552,15 @@ export function resolveOneMatch<T extends VaultItem>(
 
 export function itemLabel(item: VaultItem): string {
   if (item.kind === "secret") return item.name || "Secret";
+  if (item.kind === "card") return item.name || "Card";
+  if (item.kind === "crypto") return item.name || "Wallet";
   return item.title || "Login";
 }
 
 export function itemSecretValue(item: VaultItem): string {
   if (item.kind === "secret") return item.secret;
+  if (item.kind === "card") return item.number;
+  if (item.kind === "crypto") return item.privateKey || item.seedPhrase;
   return item.password;
 }
 
@@ -498,6 +587,34 @@ export function itemFieldValue(item: VaultItem, field: ItemField): string {
         return item.notes;
       default:
         throw new Error(`Field "${field}" is not available on secrets`);
+    }
+  }
+  if (item.kind === "card") {
+    switch (field) {
+      case "password":
+      case "secret":
+        return item.number;
+      case "username":
+        return item.holder;
+      case "notes":
+        return item.notes;
+      default:
+        throw new Error(`Field "${field}" is not available on cards`);
+    }
+  }
+  if (item.kind === "crypto") {
+    switch (field) {
+      case "password":
+      case "secret":
+        return item.privateKey || item.seedPhrase;
+      case "username":
+        return item.address;
+      case "url":
+        return item.network;
+      case "notes":
+        return item.notes;
+      default:
+        throw new Error(`Field "${field}" is not available on crypto wallets`);
     }
   }
   switch (field) {

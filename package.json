@@ -1,6 +1,6 @@
 {
   "name": "openkey-cli",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "type": "module",
   "description": "OpenKey developer CLI — secrets, TOTP, password generation, and vault sync",
   "license": "MIT",

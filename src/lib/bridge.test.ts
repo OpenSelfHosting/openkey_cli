@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mapBridgeSecret } from "./bridge.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { mapBridgeSecret, usesLoopbackTcp } from "./bridge.js";
 
 describe("mapBridgeSecret", () => {
   it("maps native host payload", () => {
@@ -42,5 +42,25 @@ describe("mapBridgeSecret", () => {
       kind: "apiToken",
     });
     expect(secret.secretKind).toBe("envSnippet");
+  });
+});
+
+describe("usesLoopbackTcp", () => {
+  const original = process.env.OPENKEY_NATIVE_PORT;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.OPENKEY_NATIVE_PORT;
+    else process.env.OPENKEY_NATIVE_PORT = original;
+  });
+
+  it("uses Unix sockets on non-Windows when OPENKEY_NATIVE_PORT is unset", () => {
+    delete process.env.OPENKEY_NATIVE_PORT;
+    if (process.platform === "win32") return;
+    expect(usesLoopbackTcp()).toBe(false);
+  });
+
+  it("uses TCP when OPENKEY_NATIVE_PORT is set (Termux)", () => {
+    process.env.OPENKEY_NATIVE_PORT = "47830";
+    expect(usesLoopbackTcp()).toBe(true);
   });
 });
