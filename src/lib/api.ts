@@ -9,6 +9,16 @@ type TokenPair = {
 
 type JsonValue = Record<string, unknown> | unknown[] | null;
 
+export function apiPathCandidates(path: string): string[] {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const versioned = normalized.startsWith("/api/v1")
+    ? normalized
+    : `/api/v1${normalized}`;
+  const candidates = [versioned];
+  if (normalized !== versioned) candidates.push(normalized);
+  return [...new Set(candidates)];
+}
+
 async function rawRequest(
   cfg: CliConfig,
   method: string,
@@ -22,22 +32,32 @@ async function rawRequest(
   if (auth && cfg.accessToken) {
     headers.Authorization = `Bearer ${cfg.accessToken}`;
   }
-  const res = await fetch(`${root}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (res.status === 204) return { ok: res.ok, status: res.status, data: {} };
-  const text = await res.text();
-  let data: JsonValue = {};
-  if (text) {
-    try {
-      data = JSON.parse(text) as JsonValue;
-    } catch {
-      data = { detail: text };
+
+  let last: { ok: boolean; status: number; data: JsonValue } | null = null;
+  for (const candidate of apiPathCandidates(path)) {
+    const res = await fetch(`${root}${candidate}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (res.status === 204) {
+      return { ok: res.ok, status: res.status, data: {} };
     }
+    const text = await res.text();
+    let data: JsonValue = {};
+    if (text) {
+      try {
+        data = JSON.parse(text) as JsonValue;
+      } catch {
+        data = { detail: text };
+      }
+    }
+    const result = { ok: res.ok, status: res.status, data };
+    last = result;
+    if (res.status !== 404) return result;
   }
-  return { ok: res.ok, status: res.status, data };
+
+  return last ?? { ok: false, status: 0, data: {} };
 }
 
 async function tryRefresh(cfg: CliConfig): Promise<CliConfig | null> {

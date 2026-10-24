@@ -141,33 +141,42 @@ async function probeServer(
   serverUrl: string,
 ): Promise<{ ok: boolean; detail: string }> {
   const root = serverUrl.replace(/\/$/, "");
+  const candidates = [`${root}/api/v1/health`, `${root}/health`];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
-  try {
-    const res = await fetch(`${root}/health`, { signal: controller.signal });
-    const text = await res.text();
-    let status = "";
+  for (const endpoint of candidates) {
     try {
-      const json = JSON.parse(text) as { status?: string; database?: string };
-      status = json.status ?? "";
-      if (json.database) status += ` db=${json.database}`;
+      const res = await fetch(endpoint, { signal: controller.signal });
+      const text = await res.text();
+      let status = "";
+      try {
+        const json = JSON.parse(text) as { status?: string; database?: string };
+        status = json.status ?? "";
+        if (json.database) status += ` db=${json.database}`;
+      } catch {
+        status = text.slice(0, 80);
+      }
+      if (res.ok) {
+        return {
+          ok: true,
+          detail: `${endpoint} → ${status || res.status}`,
+        };
+      }
+      if (res.status !== 404) {
+        return {
+          ok: false,
+          detail: `${endpoint} → HTTP ${res.status}`,
+        };
+      }
     } catch {
-      status = text.slice(0, 80);
+      // Try the next candidate.
     }
-    return {
-      ok: res.ok,
-      detail: res.ok
-        ? `${root}/health → ${status || res.status}`
-        : `${root}/health → HTTP ${res.status}`,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      detail: `${root}/health unreachable (${e instanceof Error ? e.message : String(e)})`,
-    };
-  } finally {
-    clearTimeout(timer);
   }
+
+  return {
+    ok: false,
+    detail: `${root}/api/v1/health and ${root}/health unreachable`,
+  };
 }
 
 async function probeClipboard(): Promise<{ ok: boolean; detail: string }> {

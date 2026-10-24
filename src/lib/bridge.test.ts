@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mapBridgeSecret, usesLoopbackTcp } from "./bridge.js";
+import { createServer } from "node:net";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import {
+  bridgeRequest,
+  mapBridgeSecret,
+  socketCandidates,
+  usesLoopbackTcp,
+} from "./bridge.js";
 
 describe("mapBridgeSecret", () => {
   it("maps native host payload", () => {
@@ -62,5 +70,76 @@ describe("usesLoopbackTcp", () => {
   it("uses TCP when OPENKEY_NATIVE_PORT is set (Termux)", () => {
     process.env.OPENKEY_NATIVE_PORT = "47830";
     expect(usesLoopbackTcp()).toBe(true);
+  });
+});
+
+describe("socketCandidates", () => {
+  const originalDataHome = process.env.XDG_DATA_HOME;
+  const originalConfigHome = process.env.XDG_CONFIG_HOME;
+
+  afterEach(() => {
+    if (originalDataHome === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = originalDataHome;
+
+    if (originalConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalConfigHome;
+  });
+
+  it("includes config and data directories used by the desktop app", () => {
+    const home = homedir();
+    const dataHome = join(home, ".local", "share");
+    const configHome = join(home, ".config");
+
+    expect(socketCandidates()).toContain(join(dataHome, "openkey_app", "openkey-native.sock"));
+    expect(socketCandidates()).toContain(join(configHome, "OpenKey", "openkey-native.sock"));
+  });
+
+  it("prefers XDG_CONFIG_HOME and XDG_DATA_HOME when present", () => {
+    const configHome = "/tmp/openkey-config";
+    const dataHome = "/tmp/openkey-data";
+    process.env.XDG_CONFIG_HOME = configHome;
+    process.env.XDG_DATA_HOME = dataHome;
+
+    expect(socketCandidates()).toContain(join(configHome, "openkey_app", "openkey-native.sock"));
+    expect(socketCandidates()).toContain(join(dataHome, "OpenKey", "openkey-native.sock"));
+  });
+});
+
+describe("bridgeRequest", () => {
+  it("reads a response when its header and payload arrive together", async () => {
+    const originalPort = process.env.OPENKEY_NATIVE_PORT;
+    const server = createServer((socket) => {
+      socket.once("data", () => {
+        const payload = Buffer.from(
+          JSON.stringify({ ok: true, unlocked: true }),
+          "utf8",
+        );
+        const header = Buffer.alloc(4);
+        header.writeUInt32LE(payload.length, 0);
+        socket.end(Buffer.concat([header, payload]));
+      });
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Could not determine test bridge port");
+      }
+      process.env.OPENKEY_NATIVE_PORT = String(address.port);
+
+      await expect(bridgeRequest({ type: "ping" })).resolves.toEqual({
+        ok: true,
+        unlocked: true,
+      });
+    } finally {
+      if (originalPort === undefined) delete process.env.OPENKEY_NATIVE_PORT;
+      else process.env.OPENKEY_NATIVE_PORT = originalPort;
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });

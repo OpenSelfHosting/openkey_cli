@@ -26,14 +26,18 @@ export type BridgeResponse = {
   wallets?: Array<Record<string, unknown>>;
 };
 
-function socketCandidates(): string[] {
+export function socketCandidates(): string[] {
   const override = process.env.OPENKEY_NATIVE_SOCKET?.trim();
   if (override) return [override];
 
   const home = homedir();
   const runtime = process.env.XDG_RUNTIME_DIR?.trim();
   const tmp = process.env.TMPDIR?.trim() || tmpdir();
+  const dataHome = process.env.XDG_DATA_HOME?.trim() || join(home, ".local", "share");
+  const configHome = process.env.XDG_CONFIG_HOME?.trim() || join(home, ".config");
   const support = join(home, "Library", "Application Support");
+  const flatpakData = join(home, ".var", "app", "com.openselfhosting.openkey", "data");
+  const flatpakConfig = join(home, ".var", "app", "com.openselfhosting.openkey", "config");
 
   return [
     join(
@@ -53,8 +57,16 @@ function socketCandidates(): string[] {
     join(support, "com.openselfhosting.openkey", "openkey-native.sock"),
     join(support, "OpenKey", "openkey-native.sock"),
     join(support, "openkey_app", "openkey-native.sock"),
+    join(dataHome, "OpenKey", "openkey-native.sock"),
+    join(dataHome, "openkey_app", "openkey-native.sock"),
+    join(configHome, "OpenKey", "openkey-native.sock"),
+    join(configHome, "openkey_app", "openkey-native.sock"),
+    join(flatpakData, "openkey-native.sock"),
+    join(flatpakConfig, "openkey-native.sock"),
     join(home, ".local", "share", "OpenKey", "openkey-native.sock"),
     join(home, ".local", "share", "openkey_app", "openkey-native.sock"),
+    join(home, ".config", "OpenKey", "openkey-native.sock"),
+    join(home, ".config", "openkey_app", "openkey-native.sock"),
   ].filter(Boolean);
 }
 
@@ -69,6 +81,10 @@ function resolveBridgeToken(socketPath?: string): string | undefined {
   const override = process.env.OPENKEY_NATIVE_TOKEN?.trim();
   if (override) return override;
 
+  const home = homedir();
+  const dataHome = process.env.XDG_DATA_HOME?.trim() || join(home, ".local", "share");
+  const configHome = process.env.XDG_CONFIG_HOME?.trim() || join(home, ".config");
+
   if (platform() === "win32") {
     const local = process.env.LOCALAPPDATA?.trim();
     if (local) {
@@ -79,8 +95,28 @@ function resolveBridgeToken(socketPath?: string): string | undefined {
     }
   }
 
-  if (socketPath) {
-    const tokenFile = join(dirname(socketPath), "openkey-native.token");
+  const dirs = new Set<string>();
+  if (socketPath) dirs.add(dirname(socketPath));
+  for (const socketPath of socketCandidates()) {
+    dirs.add(dirname(socketPath));
+  }
+  for (const dir of [
+    join(dataHome, "OpenKey"),
+    join(dataHome, "openkey_app"),
+    join(configHome, "OpenKey"),
+    join(configHome, "openkey_app"),
+    join(home, ".local", "share", "OpenKey"),
+    join(home, ".local", "share", "openkey_app"),
+    join(home, ".config", "OpenKey"),
+    join(home, ".config", "openkey_app"),
+    join(home, ".var", "app", "com.openselfhosting.openkey", "data"),
+    join(home, ".var", "app", "com.openselfhosting.openkey", "config"),
+  ]) {
+    dirs.add(dir);
+  }
+
+  for (const dir of dirs) {
+    const tokenFile = join(dir, "openkey-native.token");
     if (existsSync(tokenFile)) {
       return readFileSync(tokenFile, "utf8").trim() || undefined;
     }
@@ -131,41 +167,6 @@ function windowsPort(): number | null {
   }
 }
 
-function readExact(socket: Socket, length: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let got = 0;
-    const onData = (chunk: Buffer) => {
-      chunks.push(chunk);
-      got += chunk.length;
-      if (got >= length) {
-        cleanup();
-        const buf = Buffer.concat(chunks);
-        resolve(buf.subarray(0, length));
-        if (buf.length > length) {
-          socket.unshift(buf.subarray(length));
-        }
-      }
-    };
-    const onError = (err: Error) => {
-      cleanup();
-      reject(err);
-    };
-    const onClose = () => {
-      cleanup();
-      reject(new Error("Connection closed"));
-    };
-    const cleanup = () => {
-      socket.off("data", onData);
-      socket.off("error", onError);
-      socket.off("close", onClose);
-    };
-    socket.on("data", onData);
-    socket.on("error", onError);
-    socket.on("close", onClose);
-  });
-}
-
 async function requestOverSocket(
   connect: () => Socket,
   msg: Record<string, unknown>,
@@ -206,29 +207,57 @@ async function requestOverSocket(
     });
 
     socket.on("connect", () => {
-      void (async () => {
-        try {
-          const encoded = Buffer.from(JSON.stringify(msg), "utf8");
-          const header = Buffer.alloc(4);
-          header.writeUInt32LE(encoded.length, 0);
-          socket.write(Buffer.concat([header, encoded]));
+      const chunks: Buffer[] = [];
+      let received = 0;
+      const responseHeader = Buffer.alloc(4);
+      let headerBytes = 0;
+      let expectedLength: number | null = null;
+      const onData = (chunk: Buffer) => {
+        if (headerBytes < 4) {
+          const copied = Math.min(4 - headerBytes, chunk.length);
+          chunk.copy(responseHeader, headerBytes, 0, copied);
+          headerBytes += copied;
+        }
+        chunks.push(chunk);
+        received += chunk.length;
 
-          const lenBuf = await readExact(socket, 4);
-          const length = lenBuf.readUInt32LE(0);
-          if (length <= 0 || length > 16 * 1024 * 1024) {
+        if (expectedLength === null && headerBytes === 4) {
+          expectedLength = responseHeader.readUInt32LE(0);
+          if (expectedLength <= 0 || expectedLength > 16 * 1024 * 1024) {
             finish({ ok: false, error: "Invalid response length" });
             return;
           }
-          const payload = await readExact(socket, length);
-          const data = JSON.parse(payload.toString("utf8")) as BridgeResponse;
-          finish(data);
-        } catch (e) {
-          finish({
-            ok: false,
-            error: e instanceof Error ? e.message : String(e),
-          });
         }
-      })();
+
+        if (expectedLength !== null && received >= expectedLength + 4) {
+          socket.off("data", onData);
+          try {
+            const frame = Buffer.concat(chunks, received);
+            const data = JSON.parse(
+              frame.subarray(4, expectedLength + 4).toString("utf8"),
+            ) as BridgeResponse;
+            finish(data);
+          } catch (e) {
+            finish({
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+      };
+      socket.on("data", onData);
+
+      try {
+        const encoded = Buffer.from(JSON.stringify(msg), "utf8");
+        const header = Buffer.alloc(4);
+        header.writeUInt32LE(encoded.length, 0);
+        socket.write(Buffer.concat([header, encoded]));
+      } catch (e) {
+        finish({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     });
   });
 }
