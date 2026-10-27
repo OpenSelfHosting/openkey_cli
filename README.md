@@ -1,10 +1,12 @@
 # OpenKey CLI
 
-Developer command-line interface for the [OpenKey](https://github.com/OpenSelfHosting/OpenKey) self-hosted, end-to-end encrypted password manager.
+open-source developer command-line interface for the
+[OpenKey](https://github.com/OpenSelfHosting/OpenKey) self-hosted,
+end-to-end encrypted password manager.
 
 Generate passwords offline, manage developer secrets through the unlocked **desktop or Android** app (native bridge), discover SSH / `.env` / API / AWS material into a device-grouped Secrets section, and optionally authenticate to a self-hosted sync server for ciphertext pull and a short-lived `OPENKEY_SESSION`.
 
-Full documentation: [CLI guide](https://openselfhosting.com/guide/cli) (also on the docs site under **Guide → CLI**).
+Full documentation: [CLI guide](https://openkey.openselfhosting.com/guide/cli).
 
 ## Requirements
 
@@ -137,3 +139,7 @@ npm run build
 - Sessions expire (default 15 minutes; `config set-lock`)
 - Bridge is local-only while the vault is unlocked
 - Server stores ciphertext only; keys are derived on the client
+
+## License
+
+OpenKey CLI is licensed under the [MIT License](./LICENSE).
