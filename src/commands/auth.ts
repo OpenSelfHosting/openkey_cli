@@ -71,18 +71,19 @@ export async function cmdLogin(opts: {
   if (!cfg.serverUrl?.trim()) {
     throw new Error("Set server first: openkey config set-server <url>");
   }
-  const email = await readEmail(opts.email ?? cfg.email);
+  const email = await readEmail(opts.email, cfg.email);
   const password = await readMasterPassword();
 
-  let saltB64 = cfg.saltB64;
-  let kdfParams = cfg.kdfParams;
-  if (!saltB64) {
-    const bootstrap = await prelogin(cfg, email);
-    saltB64 = bootstrap.salt;
-    kdfParams = bootstrap.kdf_params;
-  }
+  const bootstrap = await prelogin(cfg, email);
+  const saltB64 = bootstrap.salt;
+  const kdfParams = bootstrap.kdf_params;
 
-  const masterKey = await deriveMasterKey(email, password, fromB64Url(saltB64));
+  const masterKey = await deriveMasterKey(
+    email,
+    password,
+    fromB64Url(saltB64),
+    kdfParams,
+  );
   const authHash = deriveAuthHash(masterKey);
   const token = await login(cfg, email, authHash);
   let next = await saveConfig({
@@ -94,18 +95,25 @@ export async function cmdLogin(opts: {
   });
 
   const material = await fetchVaultMaterial(next);
+  const vaultMasterKey = await deriveMasterKey(
+    email,
+    password,
+    fromB64Url(material.salt),
+    material.kdf_params,
+  );
+  try {
+    await unwrapVaultKey(vaultMasterKey, material.encrypted_vault_key);
+  } catch {
+    throw new Error(
+      "Server accepted the password, but the vault key could not be decrypted.",
+    );
+  }
   next = await saveConfig({
     email: material.email,
     saltB64: material.salt,
     wrappedVaultKey: material.encrypted_vault_key,
     kdfParams: material.kdf_params,
   });
-
-  try {
-    await unwrapVaultKey(masterKey, material.encrypted_vault_key);
-  } catch {
-    throw new Error("Invalid master password");
-  }
 
   const pulled = await syncPull(next);
   await upsertEntries(pulled.entries);
@@ -131,66 +139,86 @@ export async function cmdUnlock(opts: {
   raw?: boolean;
 }): Promise<void> {
   const cfg = await loadConfig();
-  const email = await readEmail(opts.email ?? cfg.email);
+  const email = await readEmail(opts.email, cfg.email);
   const password = await readMasterPassword();
 
-  let saltB64 = cfg.saltB64;
-  let wrapped = cfg.wrappedVaultKey;
-  let kdfParams = cfg.kdfParams;
-
-  if (!saltB64) {
-    if (!cfg.serverUrl?.trim()) {
-      throw new Error("No local vault meta — login first or set server URL");
-    }
-    const bootstrap = await prelogin(cfg, email);
-    saltB64 = bootstrap.salt;
-    kdfParams = bootstrap.kdf_params;
-  }
-
-  const masterKey = await deriveMasterKey(email, password, fromB64Url(saltB64));
-  const authHash = deriveAuthHash(masterKey);
+  const cachedForEmail = cfg.email?.trim().toLowerCase() === email;
   let vaultKey: Uint8Array | null = null;
-
-  if (wrapped) {
+  if (cachedForEmail && cfg.saltB64 && cfg.wrappedVaultKey) {
     try {
-      vaultKey = await unwrapVaultKey(masterKey, wrapped);
+      const cachedMasterKey = await deriveMasterKey(
+        email,
+        password,
+        fromB64Url(cfg.saltB64),
+        cfg.kdfParams,
+      );
+      vaultKey = await unwrapVaultKey(cachedMasterKey, cfg.wrappedVaultKey);
     } catch {
-      throw new Error("Invalid master password");
+      // Cached metadata may be stale after a server-side password rotation.
     }
   }
 
-  try {
-    const token = await login(cfg, email, authHash);
-    let next = await saveConfig({
-      email,
-      accessToken: token.access_token,
-      refreshToken: token.refresh_token,
-      saltB64,
-      kdfParams,
-    });
-    const material = await fetchVaultMaterial(next);
-    wrapped = material.encrypted_vault_key;
-    next = await saveConfig({
-      email: material.email,
-      saltB64: material.salt,
-      wrappedVaultKey: material.encrypted_vault_key,
-      kdfParams: material.kdf_params,
-    });
-    vaultKey = await unwrapVaultKey(masterKey, wrapped);
-    const pulled = await syncPull(next);
-    await upsertEntries(pulled.entries);
-    await upsertCollections(pulled.collections);
-    await saveConfig({ serverRevision: pulled.serverRevision });
-  } catch (err) {
-    if (!vaultKey || !wrapped) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg === "Invalid master password") throw err;
-      throw new Error(
-        msg.includes("auth_hash") || msg.includes("401") || msg.includes("Invalid")
-          ? "Invalid master password"
-          : msg,
+  if (cfg.serverUrl?.trim()) {
+    try {
+      const bootstrap = await prelogin(cfg, email);
+      const masterKey = await deriveMasterKey(
+        email,
+        password,
+        fromB64Url(bootstrap.salt),
+        bootstrap.kdf_params,
       );
+      const authHash = deriveAuthHash(masterKey);
+      const token = await login(cfg, email, authHash);
+      let next = await saveConfig({
+        email,
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+        saltB64: bootstrap.salt,
+        kdfParams: bootstrap.kdf_params,
+      });
+      const material = await fetchVaultMaterial(next);
+      const materialMasterKey = await deriveMasterKey(
+        email,
+        password,
+        fromB64Url(material.salt),
+        material.kdf_params,
+      );
+      try {
+        vaultKey = await unwrapVaultKey(
+          materialMasterKey,
+          material.encrypted_vault_key,
+        );
+      } catch {
+        throw new Error(
+          "Server accepted the password, but the vault key could not be decrypted.",
+        );
+      }
+      next = await saveConfig({
+        email: material.email,
+        saltB64: material.salt,
+        wrappedVaultKey: material.encrypted_vault_key,
+        kdfParams: material.kdf_params,
+      });
+      const pulled = await syncPull(next);
+      await upsertEntries(pulled.entries);
+      await upsertCollections(pulled.collections);
+      await saveConfig({ serverRevision: pulled.serverRevision });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("Server accepted the password")) throw err;
+      if (!vaultKey) {
+        if (/invalid email or auth_hash|HTTP 401/i.test(msg)) {
+          throw new Error(
+            "The server rejected this email or password-derived key. Confirm the account was registered on this server with the same vault password.",
+          );
+        }
+        throw new Error(
+          msg,
+        );
+      }
     }
+  } else if (!vaultKey) {
+    throw new Error("No local vault meta — login first or set server URL");
   }
 
   if (!vaultKey) throw new Error("Could not unlock vault");

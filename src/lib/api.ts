@@ -14,8 +14,10 @@ export function apiPathCandidates(path: string): string[] {
   const versioned = normalized.startsWith("/api/v1")
     ? normalized
     : `/api/v1${normalized}`;
-  const candidates = [versioned];
-  if (normalized !== versioned) candidates.push(normalized);
+  // The OpenKey sync server publishes the unversioned routes. Try those first
+  // so an unavailable or misrouted /api/v1 path cannot block authentication.
+  const candidates = [normalized];
+  if (normalized !== versioned) candidates.push(versioned);
   return [...new Set(candidates)];
 }
 
@@ -35,11 +37,27 @@ async function rawRequest(
 
   let last: { ok: boolean; status: number; data: JsonValue } | null = null;
   for (const candidate of apiPathCandidates(path)) {
-    const res = await fetch(`${root}${candidate}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${root}${candidate}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause
+          : error;
+      const reason =
+        cause instanceof Error
+          ? `${cause.message}${"code" in cause ? ` (${String(cause.code)})` : ""}`
+          : String(cause);
+      throw new Error(
+        `Could not reach OpenKey server at ${root}${candidate}: ${reason}`,
+        { cause: error },
+      );
+    }
     if (res.status === 204) {
       return { ok: res.ok, status: res.status, data: {} };
     }

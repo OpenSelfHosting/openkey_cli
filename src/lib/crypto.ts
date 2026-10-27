@@ -42,15 +42,28 @@ export async function deriveMasterKey(
   email: string,
   masterPassword: string,
   salt: Uint8Array,
+  kdfParams?: Record<string, unknown>,
 ): Promise<Uint8Array> {
+  const algorithm = kdfParams?.algorithm;
+  if (algorithm !== undefined && algorithm !== "argon2id") {
+    throw new Error(`Unsupported key derivation algorithm: ${String(algorithm)}`);
+  }
+  const parameter = (name: keyof typeof KDF): number => {
+    const value = kdfParams?.[name];
+    if (value === undefined) return KDF[name];
+    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+      throw new Error(`Invalid KDF parameter: ${name}`);
+    }
+    return value;
+  };
   const password = enc.encode(`${email.trim().toLowerCase()}:${masterPassword}`);
   const hash = await argon2id({
     password,
     salt,
-    parallelism: KDF.parallelism,
-    iterations: KDF.iterations,
-    memorySize: KDF.memory,
-    hashLength: KDF.hashLength,
+    parallelism: parameter("parallelism"),
+    iterations: parameter("iterations"),
+    memorySize: parameter("memory"),
+    hashLength: parameter("hashLength"),
     outputType: "binary",
   });
   return hash as Uint8Array;

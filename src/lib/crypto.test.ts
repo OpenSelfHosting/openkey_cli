@@ -62,6 +62,25 @@ describe("generatePassword", () => {
 });
 
 describe("crypto round-trip", () => {
+  it("matches the OpenKey app Argon2id/auth-hash fixture", async () => {
+    const master = await deriveMasterKey(
+      "interop@example.com",
+      "correct horse battery staple",
+      new Uint8Array(16),
+      {
+        algorithm: "argon2id",
+        memory: 65536,
+        iterations: 3,
+        parallelism: 4,
+        hashLength: 32,
+      },
+    );
+
+    expect(deriveAuthHash(master)).toBe(
+      "fHOr45-qZRtXob-6twSRppi3r0Xit2VKZIb0m3NlXuM",
+    );
+  });
+
   it("encrypts and decrypts strings", () => {
     const key = generateVaultKey();
     const cipher = encryptString(key, "hello openkey");
@@ -76,6 +95,38 @@ describe("crypto round-trip", () => {
     const unwrapped = await unwrapVaultKey(master, wrapped);
     expect(toB64Url(unwrapped)).toBe(toB64Url(vault));
     expect(deriveAuthHash(master).length).toBeGreaterThan(10);
+  });
+
+  it("uses the server-provided Argon2id parameters", async () => {
+    const salt = generateSalt();
+    const params = {
+      algorithm: "argon2id",
+      memory: 8192,
+      iterations: 1,
+      parallelism: 1,
+      hashLength: 32,
+    };
+    const master = await deriveMasterKey(
+      "dev@example.com",
+      "test-password-12",
+      salt,
+      params,
+    );
+    const wrapped = await wrapVaultKey(master, generateVaultKey());
+    const sameMaster = await deriveMasterKey(
+      "dev@example.com",
+      "test-password-12",
+      salt,
+      params,
+    );
+
+    expect(deriveAuthHash(sameMaster)).toBe(deriveAuthHash(master));
+    await expect(
+      unwrapVaultKey(
+        await deriveMasterKey("dev@example.com", "test-password-12", salt),
+        wrapped,
+      ),
+    ).rejects.toThrow();
   });
 });
 

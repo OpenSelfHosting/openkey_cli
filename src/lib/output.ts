@@ -94,14 +94,18 @@ function promptHidden(question: string): Promise<string> {
 }
 
 export async function readMasterPassword(): Promise<string> {
-  const fromEnv = process.env.OPENKEY_PASSWORD?.trim();
+  const fromEnv = process.env.OPENKEY_PASSWORD;
   if (fromEnv) return fromEnv;
   const pw = await prompt("Master password: ", { hide: true });
   if (!pw) throw new Error("Master password required");
   return pw;
 }
 
-export async function readEmail(fallback?: string): Promise<string> {
+export async function readEmail(
+  explicit?: string,
+  fallback?: string,
+): Promise<string> {
+  if (explicit?.trim()) return explicit.trim().toLowerCase();
   const fromEnv = process.env.OPENKEY_EMAIL?.trim();
   if (fromEnv) return fromEnv.toLowerCase();
   if (fallback?.trim()) return fallback.trim().toLowerCase();
