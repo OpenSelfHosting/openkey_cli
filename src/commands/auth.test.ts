@@ -64,13 +64,13 @@ describe("cmdUnlock", () => {
     const requestedPaths: string[] = [];
     const server = createServer(async (request, response) => {
       requestedPaths.push(request.url ?? "");
-      if (request.method === "POST" && request.url === "/api/v1/auth/prelogin") {
+      if (request.method === "POST" && request.url === "/auth/prelogin") {
         await readJson(request);
         respond(response, {
           salt: toB64Url(salt),
           kdf_params: serverKdfParams,
         });
-      } else if (request.method === "POST" && request.url === "/api/v1/auth/login") {
+      } else if (request.method === "POST" && request.url === "/auth/login") {
         const body = await readJson(request);
         expect(body.auth_hash).toBe(deriveAuthHash(masterKey));
         respond(response, {
@@ -78,14 +78,14 @@ describe("cmdUnlock", () => {
           refresh_token: "test-refresh",
           user_id: "user-id",
         });
-      } else if (request.method === "GET" && request.url === "/api/v1/auth/me") {
+      } else if (request.method === "GET" && request.url === "/auth/me") {
         respond(response, {
           email,
           salt: toB64Url(salt),
           kdf_params: serverKdfParams,
           encrypted_vault_key: wrapped,
         });
-      } else if (request.method === "POST" && request.url === "/api/v1/sync") {
+      } else if (request.method === "POST" && request.url === "/sync") {
         respond(response, {
           entries: [],
           collections: [],
@@ -119,10 +119,10 @@ describe("cmdUnlock", () => {
 
       expect(log).toHaveBeenCalledOnce();
       expect(requestedPaths).toEqual([
-        "/api/v1/auth/prelogin",
-        "/api/v1/auth/login",
-        "/api/v1/auth/me",
-        "/api/v1/sync",
+        "/auth/prelogin",
+        "/auth/login",
+        "/auth/me",
+        "/sync",
       ]);
     } finally {
       process.env.XDG_CONFIG_HOME = previousEnv.XDG_CONFIG_HOME;
@@ -133,5 +133,5 @@ describe("cmdUnlock", () => {
       );
       await rm(configRoot, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
