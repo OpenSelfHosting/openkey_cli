@@ -38,7 +38,7 @@ describe("server network errors", () => {
         "user@example.com",
       ),
     ).rejects.toThrow(
-      "Could not reach OpenKey server at https://server.example/api/v1/auth/prelogin: connect ECONNREFUSED (ECONNREFUSED)",
+      "Could not reach OpenKey server at https://server.example/auth/prelogin: connect ECONNREFUSED (ECONNREFUSED)",
     );
   });
 });
