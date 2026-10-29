@@ -1,16 +1,32 @@
+<p align="center">
+   <img src="./.github/assets/openkey-cli-install.png" alt="OpenKey CLI install command">
+</p>
+
 # OpenKey CLI
 
 OpenKey CLI is the command-line companion for the self-hosted, end-to-end encrypted [OpenKey](https://github.com/OpenSelfHosting/OpenKey) password manager.
 
-It lets you:
+It helps you:
 
-- generate secure passwords offline
-- manage developer secrets from an unlocked OpenKey desktop or Android app
-- discover SSH keys, `.env` files, API tokens, AWS credentials, and other sensitive material
-- export selected values into your shell or child processes
-- optionally sync encrypted data with a self-hosted OpenKey server
+- generate strong passwords entirely offline
+- manage secrets, logins, cards, and crypto records from a local unlocked OpenKey app
+- discover SSH keys, `.env` files, API tokens, AWS credentials, and other likely leaks on your machine
+- export selected values into your shell or a child process
+- sync encrypted data with a self-hosted OpenKey server when you want server-backed access
 
-Full documentation: [CLI guide](https://openkey.openselfhosting.com/guide/cli).
+This README is a practical quick-start guide. For deeper product docs and platform setup notes, see the [CLI guide](https://openkey.openselfhosting.com/guide/cli).
+
+## Why use OpenKey CLI?
+
+OpenKey CLI is designed for developers who want a fast, local-first workflow without uploading secrets to a third-party service.
+
+Typical use cases:
+
+- generate and rotate app passwords without leaving the terminal
+- keep API tokens, SSH keys, and `.env` values in a structured vault
+- retrieve a secret for a single command or shell session without exposing it in your shell history
+- discover secrets already sitting on disk and bring them under versioned vault control
+- operate in a self-hosted setup where the server only stores encrypted payloads
 
 ## Requirements
 
@@ -27,10 +43,19 @@ npm install -g openkey-cli
 openkey --version
 ```
 
+### Run without installing globally
+
+```bash
+npx openkey-cli --help
+npx tsx src/cli.ts --help
+node dist/cli.js --help
+```
+
 ### From source
 
 ```bash
-cd openkey_cli
+git clone https://github.com/OpenSelfHosting/OpenKey_cli.git
+cd OpenKey_cli
 npm install
 npm run build
 npm link
@@ -38,12 +63,39 @@ npm link
 
 `npm link` is optional, but it makes the `openkey` binary available globally on your PATH.
 
-### Run without linking
+## Common workflows
+
+A good default workflow looks like this:
 
 ```bash
-npx openkey-cli --help
-npx tsx src/cli.ts --help
-node dist/cli.js --help
+# 1) check whether a local bridge or server session is available
+openkey status
+
+# 2) generate a password without touching your vault
+openkey gen -l 24 --no-symbols
+
+# 3) scan for likely secrets and review the results
+openkey discover --dry-run
+
+# 4) save approved findings into a device collection
+openkey discover -y
+
+# 5) list or fetch the values you need
+openkey secret list
+openkey get "GitHub" --field username
+openkey secret copy "GitHub PAT"
+
+# 6) export selected values for the current shell session
+eval "$(openkey env DATABASE_URL GITHUB_TOKEN)"
+```
+
+OpenKey CLI also supports a server-backed flow for self-hosted deployments:
+
+```bash
+openkey config set-server http://localhost:8000
+openkey login --email you@example.com
+eval "$(openkey unlock)"
+openkey sync
 ```
 
 ## Quick start
@@ -157,7 +209,18 @@ The config file is stored in the standard user config directory:
 
 ## Command reference
 
-The sections below describe the most important commands in detail.
+These are the commands most people use day to day.
+
+### At a glance
+
+- `openkey gen` — generate a strong password offline
+- `openkey discover` — scan a machine for likely secrets and onboard them
+- `openkey secret ...` — add, list, get, update, and export secrets
+- `openkey logins`, `openkey cards`, `openkey crypto` — inspect non-secret vault records
+- `openkey get`, `openkey copy`, `openkey totp` — fetch values for a single item
+- `openkey env` / `openkey run` — inject values into shells or child processes
+- `openkey sync`, `openkey login`, `openkey unlock` — use self-hosted server mode
+- `openkey doctor` — check local bridge/session/server health
 
 ### 1) Password generation
 
@@ -282,6 +345,17 @@ openkey secret get "GitHub PAT"
 ```
 
 Use this when you need the actual credential value in a script or terminal. Because it prints the plaintext secret, use it deliberately.
+
+#### `openkey copy`
+
+Copy a best-match vault item by name, host, or UUID prefix without requiring the `secret` subcommand. This is the shorthand for the common “copy a secret to clipboard” workflow.
+
+```bash
+openkey copy "GitHub PAT"
+openkey copy "GitHub" --clear 60
+```
+
+When the item is not a secret, OpenKey copies the matched value in the same way the generic `get` command resolves it.
 
 #### `openkey secret copy`
 
